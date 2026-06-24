@@ -6,28 +6,28 @@
     <title>SIG Kesesuaian Lahan Ubi Jalar</title>
     <meta name="description" content="Sistem Informasi Geografis untuk analisis kesesuaian lahan pertanian Ubi Jalar berbasis PostGIS — Universitas Hasanuddin Semester 4">
 
-    <!-- Tailwind CSS v4 -->
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-
-    <!-- Leaflet -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
-
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-
-    <style type="text/tailwindcss">
-        @theme {
-            --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-            --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    <!-- Tailwind CSS v3 Play CDN (stable, consistent di semua browser) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'ui-monospace', 'monospace']
+                    }
+                }
+            }
         }
+    </script>
 
+    <style>
         /* ─── Scrollbar ─── */
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 
-        /* ─── Keyframes ─── */
+        /* ─── Animations ─── */
         @keyframes pulse-slow {
             0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.5); }
             50%       { opacity: 0.7; box-shadow: 0 0 0 5px rgba(52,211,153,0); }
@@ -41,7 +41,7 @@
         .animate-spin-fast  { animation: spin-fast 0.7s linear infinite; }
         .animate-fade-up    { animation: fade-up 0.3s ease forwards; }
 
-        /* ─── Sidebar accent top border ─── */
+        /* ─── Sidebar accent border ─── */
         .sidebar-accent::before {
             content: '';
             position: absolute;
@@ -121,25 +121,11 @@
         .lbl-kesesuaian.s-class  { border: 1px solid rgba(52,211,153,0.35); color: #6ee7b7; }
         .lbl-kesesuaian.n-class  { border: 1px solid rgba(248,113,113,0.35); color: #fca5a5; }
         .lbl-kesesuaian.un-class { border: 1px solid rgba(107,114,128,0.25); color: #9ca3af; }
-        .lbl-pola {
-            background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
-            border: 1px solid rgba(167,139,250,0.28); border-radius: 5px;
-            padding: 2px 8px; font-family: 'Inter', sans-serif; font-size: 10.5px;
-            font-weight: 500; color: #c4b5fd; white-space: nowrap;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-        }
         .lbl-curah {
             background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
             border: 1px solid rgba(56,189,248,0.3); border-radius: 5px;
             padding: 2px 7px; font-family: 'JetBrains Mono', monospace;
             font-size: 10px; font-weight: 600; color: #7dd3fc;
-            white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-        }
-        .lbl-lereng {
-            background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
-            border: 1px solid rgba(251,191,36,0.3); border-radius: 5px;
-            padding: 2px 7px; font-family: 'JetBrains Mono', monospace;
-            font-size: 10px; font-weight: 600; color: #fde68a;
             white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
         }
         .lbl-rekomendasi {
@@ -150,7 +136,7 @@
             white-space: nowrap; text-shadow: 0 0 8px rgba(250,204,21,0.5);
         }
 
-        /* floating pill */
+        /* ─── Floating overlays ─── */
         .map-pill {
             position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
             z-index: 1000; background: rgba(13,17,23,0.85); backdrop-filter: blur(14px);
@@ -178,6 +164,12 @@
         .chip-live { border-color: rgba(52,211,153,0.25); color: #34d399; }
         .chip-warn { border-color: rgba(250,204,21,0.3); color: #fde047; }
     </style>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="h-full bg-[#080c12] flex overflow-hidden font-sans">
 
@@ -500,19 +492,62 @@
                     onEachFeature(feature, layer) {
                         const p = feature.properties || {};
                         const title = namaLayer.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+                        // Field teknis yang tidak perlu ditampilkan di popup
+                        const SKIP_FIELDS = new Set([
+                            'ogc_fid','id','orig_fid','warna',
+                            'batuan_di_permukaan','c_organik','drainase','ktk_liat',
+                            'kedalaman_tanah','kemiringan_lereng','ph','salinitas','tekstur'
+                        ]);
+
+                        // Cek apakah nilai berbentuk array biner seperti [0,1,1,1]
+                        function isBinaryArray(v) {
+                            return typeof v === 'string' && /^\[[\d,\s]+\]$/.test(v.trim());
+                        }
+
                         let html = `<div style="font-family:'Inter',sans-serif">
                             <div style="font-weight:700;color:#e6edf3;font-size:13px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.08)">${title}</div>`;
+
                         for (const key in p) {
-                            const val = p[key]; const k = key.replace(/_/g, ' ');
+                            const val = p[key];
+                            // Lewati field teknis dan nilai biner
+                            if (SKIP_FIELDS.has(key)) continue;
+                            if (isBinaryArray(String(val ?? ''))) continue;
+                            if (val === null || val === undefined || val === '') continue;
+
+                            const k = key.replace(/_/g, ' ');
                             let vd = val;
-                            if (key === 'suai_lahan' && val) {
-                                const up = val.toUpperCase();
+
+                            // Warnai suai_lahan berdasarkan kelas
+                            if (key === 'suai_lahan') {
+                                const up = String(val).toUpperCase();
                                 const col = up.includes('S') ? '#34d399' : up.includes('N') ? '#f87171' : '#9ca3af';
-                                vd = `<span style="color:${col};font-weight:600">${val}</span>`;
+                                vd = `<span style="color:${col};font-weight:700;font-size:13px">${val}</span>`;
                             }
-                            html += `<div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0">
-                                <span style="color:#6e7681">${k}</span>
-                                <span style="color:#c9d1d9;text-align:right">${vd ?? '—'}</span>
+                            // Warnai ch (curah hujan)
+                            if (key === 'ch') {
+                                vd = `<span style="color:#7dd3fc">${val} mm/thn</span>`;
+                            }
+                            // Warnai kl (kemiringan)
+                            if (key === 'kl') {
+                                vd = `<span style="color:#fde68a">${val}</span>`;
+                            }
+                            // Warnai namobj (pola ruang)
+                            if (key === 'namobj') {
+                                vd = `<span style="color:#c4b5fd">${val}</span>`;
+                            }
+                            // Warnai wadmkc / wadmkd (administrasi)
+                            if (key === 'wadmkc' || key === 'wadmkd') {
+                                vd = `<span style="color:#93c5fd">${val}</span>`;
+                            }
+                            // Format luas jadi lebih readable
+                            if (key === 'luas' && !isNaN(parseFloat(val))) {
+                                vd = `${parseFloat(val).toFixed(2)} Ha`;
+                            }
+
+                            html += `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:11.5px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+                                <span style="color:#6e7681;white-space:nowrap">${k}</span>
+                                <span style="color:#c9d1d9;text-align:right;max-width:60%">${vd ?? '—'}</span>
                             </div>`;
                         }
                         html += '</div>';
@@ -543,8 +578,9 @@
         // ══════════════════════════════════════════════════════
         function labelAdministrasi(f) {
             const p = f.properties;
-            const kc = p['WADMKC'] || p['wadmkc'] || '';
-            const kd = p['WADMKD'] || p['wadmkd'] || '';
+            // kolom lowercase: wadmkc (kecamatan), wadmkd (desa)
+            const kd = p['wadmkd'] || p['WADMKD'] || '';
+            const kc = p['wadmkc'] || p['WADMKC'] || '';
             if (!kd && !kc) return null;
             const text = kd ? kd : kc;
             return { html: text, cssClass: 'lbl-admin' };
@@ -559,7 +595,8 @@
         }
 
         function labelPolaRuang(f) {
-            const val = f.properties['NAMOBJ'] || f.properties['namobj'] || '';
+            // kolom lowercase: namobj
+            const val = f.properties['namobj'] || f.properties['NAMOBJ'] || '';
             if (!val) return null;
             let text = String(val).trim();
             if (text.length > 22) text = text.slice(0, 20) + '…';
@@ -567,13 +604,15 @@
         }
 
         function labelCurahHujan(f) {
-            const val = f.properties['CH'] || '';
+            // kolom lowercase: ch
+            const val = f.properties['ch'] || f.properties['CH'] || '';
             if (!val) return null;
             return { html: val + ' mm', cssClass: 'lbl-curah' };
         }
 
         function labelKemiringan(f) {
-            const val = f.properties['KL'] || '';
+            // kolom lowercase: kl
+            const val = f.properties['kl'] || f.properties['KL'] || '';
             if (!val || val === 'null') return null;
             return { html: val, cssClass: 'lbl-lereng' };
         }
@@ -585,11 +624,13 @@
         // ══════════════════════════════════════════════════════
         // 7. Load semua layer
         // ══════════════════════════════════════════════════════
-        loadLayer("administrasi_wilayah", layerAdministrasi, null,               labelAdministrasi, 11);
-        loadLayer("curah_hujan",          layerCurahHujan,   styleCurahHujan,    labelCurahHujan,   10);
-        loadLayer("kemiringan_lereng",    layerKemiringan,   styleKemiringan,    labelKemiringan,   12);
-        loadLayer("pola_ruang",           layerPolaRuang,    null,               labelPolaRuang,    12);
-        loadLayer("kesesuaian_lahan",     layerKesesuaian,   styleKesesuaian,    labelKesesuaian,   12);
+        loadLayer("administrasi_wilayah", layerAdministrasi, null,            labelAdministrasi, 11);
+        loadLayer("curah_hujan",          layerCurahHujan,   styleCurahHujan,  labelCurahHujan,   10);
+        // kemiringan_lereng: 800 fitur, label dinonaktifkan agar ringan
+        loadLayer("kemiringan_lereng",    layerKemiringan,   styleKemiringan,  null);
+        // pola_ruang: label dinonaktifkan sesuai permintaan (terlalu padat)
+        loadLayer("pola_ruang",           layerPolaRuang,    null,             null);
+        loadLayer("kesesuaian_lahan",     layerKesesuaian,   styleKesesuaian,  labelKesesuaian,   12);
 
         // Layer control
         const overlayMaps = {
@@ -815,6 +856,7 @@
                     }).addTo(layerRekomendasi);
 
                     layerRekomendasi.addTo(map);
+                    layerRekomendasi.bringToFront(); // Pastikan layer rekomendasi tampil di atas layer lain
                     chip.style.display = 'flex';
 
                     setPanel(labelHtml(ICON_STAR, 'Rekomendasi Lahan') +
@@ -823,7 +865,7 @@
                                 ${ICON_STAR} ${data.features.length} area rekomendasi ditemukan
                             </div>
                             <p class="text-[11px] text-gray-500 leading-relaxed px-1">
-                                Area berwarna <span class="text-yellow-300 font-medium">kuning</span> pada peta adalah lokasi terbaik untuk perluasan lahan Ubi Jalar berdasarkan: kesesuaian lahan S1/S2/S3, curah hujan sedang-tinggi, kemiringan ≤ 15%, dan pola ruang non-lindung/permukiman.
+                                Area berwarna <span class="text-yellow-300 font-medium">kuning putus-putus</span> pada peta adalah lokasi terbaik untuk perluasan lahan Ubi Jalar berdasarkan: kesesuaian lahan minimal Sesuai, curah hujan sedang-tinggi, kemiringan &lt; 15%, dan pola ruang mendukung pertanian.
                             </p>
                         </div>`
                     );
