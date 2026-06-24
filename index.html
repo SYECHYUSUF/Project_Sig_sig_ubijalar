@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIG Kesesuaian Lahan Ubi Jalar</title>
+    <meta name="description" content="Sistem Informasi Geografis untuk analisis kesesuaian lahan pertanian Ubi Jalar berbasis PostGIS — Universitas Hasanuddin Semester 4">
+
+    <!-- Tailwind CSS v4 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <style type="text/tailwindcss">
+        @theme {
+            --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+        }
+
+        /* ─── Scrollbar ─── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+        /* ─── Keyframes ─── */
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.5); }
+            50%       { opacity: 0.7; box-shadow: 0 0 0 5px rgba(52,211,153,0); }
+        }
+        @keyframes spin-fast { to { transform: rotate(360deg); } }
+        @keyframes fade-up {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .animate-pulse-slow { animation: pulse-slow 2.5s ease-in-out infinite; }
+        .animate-spin-fast  { animation: spin-fast 0.7s linear infinite; }
+        .animate-fade-up    { animation: fade-up 0.3s ease forwards; }
+
+        /* ─── Sidebar accent top border ─── */
+        .sidebar-accent::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 2px;
+            background: linear-gradient(90deg,#34d399,#60a5fa,#a78bfa,#f472b6);
+            z-index: 10;
+        }
+
+        /* ─── Leaflet dark overrides ─── */
+        .leaflet-control-layers {
+            background: rgba(13,17,23,0.92) !important;
+            backdrop-filter: blur(16px) !important;
+            border: 1px solid rgba(255,255,255,0.07) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+            padding: 12px !important;
+            color: #c9d1d9 !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13px !important;
+        }
+        .leaflet-control-layers-separator { border-top-color: rgba(255,255,255,0.07) !important; }
+        .leaflet-control-layers-overlays label { margin-bottom: 4px !important; }
+        .leaflet-control-zoom a {
+            background: rgba(13,17,23,0.92) !important;
+            backdrop-filter: blur(10px) !important;
+            border-color: rgba(255,255,255,0.1) !important;
+            color: #c9d1d9 !important;
+            font-weight: 600 !important;
+            transition: all 0.2s !important;
+        }
+        .leaflet-control-zoom a:hover { background: rgba(28,35,51,0.98) !important; color: #fff !important; }
+        .leaflet-popup-content-wrapper {
+            background: rgba(13,17,23,0.96) !important;
+            backdrop-filter: blur(16px) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            border-radius: 12px !important;
+            color: #c9d1d9 !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6) !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        .leaflet-popup-tip { background: rgba(13,17,23,0.96) !important; }
+        .leaflet-popup-content { font-size: 12px; line-height: 1.9; }
+        .leaflet-popup-close-button { color: #8b949e !important; }
+        .leaflet-popup-close-button:hover { color: #fff !important; }
+        .leaflet-draw-toolbar a {
+            background-color: rgba(13,17,23,0.92) !important;
+            border-color: rgba(255,255,255,0.1) !important;
+            transition: all 0.2s !important;
+        }
+        .leaflet-draw-toolbar a:hover { background-color: rgba(28,35,51,0.98) !important; }
+        .leaflet-bar { border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 10px !important; overflow: hidden !important; }
+
+        /* ─── Permanent map labels ─── */
+        .leaflet-tooltip.map-label {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            pointer-events: none !important;
+        }
+        .leaflet-tooltip.map-label::before { display: none !important; }
+
+        .lbl-admin {
+            background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
+            border: 1px solid rgba(96,165,250,0.25); border-radius: 6px;
+            padding: 3px 8px; font-family: 'Inter', sans-serif;
+            font-size: 11px; font-weight: 600; color: #93c5fd;
+            white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        .lbl-kesesuaian {
+            background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
+            border-radius: 5px; padding: 2px 7px;
+            font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+            font-weight: 600; white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        .lbl-kesesuaian.s-class  { border: 1px solid rgba(52,211,153,0.35); color: #6ee7b7; }
+        .lbl-kesesuaian.n-class  { border: 1px solid rgba(248,113,113,0.35); color: #fca5a5; }
+        .lbl-kesesuaian.un-class { border: 1px solid rgba(107,114,128,0.25); color: #9ca3af; }
+        .lbl-pola {
+            background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
+            border: 1px solid rgba(167,139,250,0.28); border-radius: 5px;
+            padding: 2px 8px; font-family: 'Inter', sans-serif; font-size: 10.5px;
+            font-weight: 500; color: #c4b5fd; white-space: nowrap;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        .lbl-curah {
+            background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
+            border: 1px solid rgba(56,189,248,0.3); border-radius: 5px;
+            padding: 2px 7px; font-family: 'JetBrains Mono', monospace;
+            font-size: 10px; font-weight: 600; color: #7dd3fc;
+            white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        .lbl-lereng {
+            background: rgba(10,14,20,0.82); backdrop-filter: blur(8px);
+            border: 1px solid rgba(251,191,36,0.3); border-radius: 5px;
+            padding: 2px 7px; font-family: 'JetBrains Mono', monospace;
+            font-size: 10px; font-weight: 600; color: #fde68a;
+            white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        .lbl-rekomendasi {
+            background: rgba(10,14,20,0.88); backdrop-filter: blur(8px);
+            border: 1px solid rgba(250,204,21,0.5); border-radius: 5px;
+            padding: 3px 8px; font-family: 'Inter', sans-serif;
+            font-size: 10.5px; font-weight: 700; color: #fde047;
+            white-space: nowrap; text-shadow: 0 0 8px rgba(250,204,21,0.5);
+        }
+
+        /* floating pill */
+        .map-pill {
+            position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: rgba(13,17,23,0.85); backdrop-filter: blur(14px);
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 9999px;
+            padding: 7px 20px; display: flex; align-items: center; gap: 8px;
+            white-space: nowrap; font-family: 'Inter', sans-serif;
+            font-size: 12.5px; font-weight: 600; color: #c9d1d9; letter-spacing: 0.3px;
+        }
+        .coord-bar {
+            position: absolute; bottom: 28px; left: 10px; z-index: 1000;
+            background: rgba(13,17,23,0.82); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.07); border-radius: 8px;
+            padding: 5px 12px; font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; color: #6e7681;
+        }
+        .status-chips {
+            position: absolute; top: 12px; right: 12px; z-index: 1000; display: flex; gap: 6px;
+        }
+        .chip {
+            background: rgba(13,17,23,0.82); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.07); border-radius: 9999px;
+            padding: 4px 12px; font-family: 'Inter', sans-serif;
+            font-size: 11px; font-weight: 500; color: #8b949e; display: flex; align-items: center; gap: 5px;
+        }
+        .chip-live { border-color: rgba(52,211,153,0.25); color: #34d399; }
+        .chip-warn { border-color: rgba(250,204,21,0.3); color: #fde047; }
+    </style>
+</head>
+<body class="h-full bg-[#080c12] flex overflow-hidden font-sans">
+
+    <!-- ══════════════════════ MAP AREA ══════════════════════ -->
+    <div class="relative flex-1 h-full">
+        <div id="map" class="h-full w-full"></div>
+
+        <!-- Floating title pill -->
+        <div class="map-pill">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-slow flex-shrink-0"></span>
+            SIG Kesesuaian Lahan Ubi Jalar — Sulawesi Selatan
+        </div>
+
+        <!-- Status chips -->
+        <div class="status-chips">
+            <div class="chip chip-live">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                PostGIS Online
+            </div>
+            <div class="chip" id="layer-chip">5 Layer</div>
+            <div class="chip chip-warn" id="recommend-chip" style="display:none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Rekomendasi Aktif
+            </div>
+        </div>
+
+        <!-- Coordinate bar -->
+        <div class="coord-bar" id="coord-display">—</div>
+    </div>
+
+    <!-- ══════════════════════ SIDEBAR ══════════════════════ -->
+    <aside class="sidebar-accent relative flex flex-col w-[340px] h-full bg-[#0d1117]/95 backdrop-blur-xl border-l border-white/[0.06] overflow-hidden">
+
+        <!-- ── Header ── -->
+        <div class="px-5 py-4 border-b border-white/[0.06] flex-shrink-0">
+            <div class="flex items-center gap-2 mb-3">
+                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[10px] font-semibold tracking-widest uppercase">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+                    </svg>
+                    Analisis Spasial
+                </div>
+            </div>
+            <h1 class="text-base font-bold text-white leading-tight">Panel Kesesuaian Lahan</h1>
+            <p class="text-[11px] text-gray-500 mt-0.5">SIG Ubi Jalar · PostGIS · FastAPI · Leaflet</p>
+        </div>
+
+        <!-- ── Scrollable content ── -->
+        <div class="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3" id="sidebar-content">
+
+            <!-- ┌─ TEAM CARD ─┐ -->
+            <div class="rounded-xl bg-[#161b22] border border-white/[0.06] p-4 hover:border-white/[0.12] hover:bg-[#1c2333] transition-all duration-200">
+                <div class="flex items-center gap-2 text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Anggota Kelompok
+                </div>
+                <div class="flex flex-col gap-2.5">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">MY</div>
+                        <div><div class="text-[13px] font-medium text-gray-200">Moch Syekh Yusuf</div><div class="text-[10.5px] text-gray-500 font-mono">H071241093</div></div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">MA</div>
+                        <div><div class="text-[13px] font-medium text-gray-200">Muhammad Alif Sakti</div><div class="text-[10.5px] text-gray-500 font-mono">H071241018</div></div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">AH</div>
+                        <div><div class="text-[13px] font-medium text-gray-200">Aditya Hisbul Bahri</div><div class="text-[10.5px] text-gray-500 font-mono">H071241069</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ┌─ INFO PANEL ─┐ -->
+            <div id="info-panel" class="rounded-xl bg-[#161b22] border border-white/[0.06] p-4 hover:border-white/[0.12] hover:bg-[#1c2333] transition-all duration-200">
+                <div class="flex items-center gap-2 text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                    Informasi Lahan
+                </div>
+                <div class="flex flex-col items-center justify-center py-4 gap-3 text-center">
+                    <div class="w-12 h-12 rounded-2xl bg-[#1c2333] border border-white/[0.06] flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-[12px] font-medium text-gray-400 mb-1">Belum ada data dipilih</p>
+                        <p class="text-[11px] text-gray-600 leading-relaxed">Klik titik pada peta untuk cek semua informasi lahan,<br>atau gambar area untuk analisis luas.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ┌─ LEGEND — Kesesuaian ─┐ -->
+            <div class="rounded-xl bg-[#161b22] border border-white/[0.06] p-4 hover:border-white/[0.12] hover:bg-[#1c2333] transition-all duration-200">
+                <div class="flex items-center gap-2 text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.47-1.125-.29-.29-.41-.688-.41-1.087 0-.899.75-1.648 1.648-1.648h1.952c3.148 0 5.632-2.484 5.632-5.632C21.98 6.218 17.478 2 12 2z"/></svg>
+                    Legenda Kesesuaian Lahan
+                </div>
+                <div class="flex flex-col gap-2 mb-4">
+                    <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-emerald-500/[0.06] border border-emerald-500/15">
+                        <span class="w-2.5 h-2.5 rounded-sm bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] flex-shrink-0"></span>
+                        <span class="text-[12.5px] text-gray-300 font-medium">Sesuai</span>
+                        <span class="ml-auto text-[10.5px] font-mono text-emerald-500/70">S1 / S2 / S3</span>
+                    </div>
+                    <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-red-500/[0.06] border border-red-500/15">
+                        <span class="w-2.5 h-2.5 rounded-sm bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)] flex-shrink-0"></span>
+                        <span class="text-[12.5px] text-gray-300 font-medium">Tidak Sesuai</span>
+                        <span class="ml-auto text-[10.5px] font-mono text-red-500/70">N</span>
+                    </div>
+                    <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                        <span class="w-2.5 h-2.5 rounded-sm bg-gray-500 flex-shrink-0"></span>
+                        <span class="text-[12.5px] text-gray-400 font-medium">Belum Diproses</span>
+                        <span class="ml-auto text-[10.5px] font-mono text-gray-600">—</span>
+                    </div>
+                </div>
+
+                <!-- Legenda Curah Hujan -->
+                <div class="text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-2 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="19" x2="8" y2="21"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="16" y1="19" x2="16" y2="21"/><line x1="16" y1="13" x2="16" y2="15"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="12" y1="15" x2="12" y2="17"/><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>
+                    Curah Hujan (mm/thn)
+                </div>
+                <div class="flex flex-col gap-1.5 mb-4">
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#bfdbfe"></span><span class="text-[11.5px] text-gray-400">2300–2400</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#93c5fd"></span><span class="text-[11.5px] text-gray-400">2400–2500</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#60a5fa"></span><span class="text-[11.5px] text-gray-400">2500–2600</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#3b82f6"></span><span class="text-[11.5px] text-gray-400">2600–2700</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#1d4ed8"></span><span class="text-[11.5px] text-gray-400">&gt; 2700</span></div>
+                </div>
+
+                <!-- Legenda Kemiringan -->
+                <div class="text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-2 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Kemiringan Lereng
+                </div>
+                <div class="flex flex-col gap-1.5 mb-4">
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#fef9c3"></span><span class="text-[11.5px] text-gray-400">0–3% (Datar)</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#fde68a"></span><span class="text-[11.5px] text-gray-400">3–8% (Landai)</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#f59e0b"></span><span class="text-[11.5px] text-gray-400">8–15% (Agak Curam)</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#d97706"></span><span class="text-[11.5px] text-gray-400">15–25% (Curam)</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#b45309"></span><span class="text-[11.5px] text-gray-400">25–45% (Sangat Curam)</span></div>
+                    <div class="flex items-center gap-2.5"><span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#78350f"></span><span class="text-[11.5px] text-gray-400">&gt;45% (Terjal)</span></div>
+                </div>
+
+                <!-- Legenda Rekomendasi -->
+                <div class="text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-2 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    Rekomendasi Lahan
+                </div>
+                <div class="flex items-center gap-2.5">
+                    <span class="w-3 h-3 rounded-sm flex-shrink-0" style="background:#fde047; box-shadow: 0 0 6px rgba(253,224,71,0.6)"></span>
+                    <span class="text-[11.5px] text-gray-400">Lokasi Terbaik Ubi Jalar</span>
+                </div>
+            </div>
+
+            <!-- ┌─ TOMBOL AKSI ─┐ -->
+            <div class="flex flex-col gap-2">
+                <!-- Tombol Rekomendasi -->
+                <button id="btn-recommend" onclick="loadRecommendation()"
+                    class="group w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl
+                           bg-yellow-500/[0.07] border border-yellow-500/25 text-yellow-400 text-[13px] font-semibold
+                           hover:bg-yellow-500/[0.15] hover:border-yellow-500/50 hover:text-yellow-300
+                           hover:shadow-[0_0_20px_rgba(234,179,8,0.15)]
+                           active:scale-[0.98] transition-all duration-200 cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 group-hover:scale-110 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                    Tampilkan Rekomendasi Lahan
+                </button>
+
+                <!-- Tombol Clear -->
+                <button id="btn-clear" onclick="clearMap()"
+                    class="group w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl
+                           bg-red-500/[0.06] border border-red-500/20 text-red-400 text-[13px] font-semibold
+                           hover:bg-red-500/[0.14] hover:border-red-500/40 hover:text-red-300
+                           hover:shadow-[0_0_20px_rgba(248,113,113,0.15)]
+                           active:scale-[0.98] transition-all duration-200 cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 group-hover:rotate-12 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                    </svg>
+                    Bersihkan Gambar
+                </button>
+            </div>
+
+        </div>
+
+        <!-- ── Footer ── -->
+        <div class="px-5 py-3 border-t border-white/[0.06] flex-shrink-0">
+            <div class="flex items-center justify-between">
+                <span class="text-[10px] text-gray-600">Semester 4 · Universitas Hasanuddin</span>
+                <div class="flex items-center gap-1.5 text-[10px] text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                    PostGIS · EPSG:4326
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <script>
+        // ══════════════════════════════════════════════════════
+        // 1. Map Initialization
+        // ══════════════════════════════════════════════════════
+        const map = L.map('map', { zoomControl: false }).setView([-4.6, 119.7], 10);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        const baseCartoDB = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &amp; CartoDB', subdomains: 'abcd', maxZoom: 19
+        });
+        const baseOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        });
+        const baseSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        });
+        baseCartoDB.addTo(map);
+
+        const baseMaps = {
+            "Dark (CartoDB)": baseCartoDB,
+            "OpenStreetMap": baseOSM,
+            "Citra Satelit": baseSatellite
+        };
+
+        // ══════════════════════════════════════════════════════
+        // 2. Layer Groups — semua 5 layer + rekomendasi
+        // ══════════════════════════════════════════════════════
+        const layerAdministrasi = L.layerGroup();
+        const layerCurahHujan   = L.layerGroup();
+        const layerKemiringan   = L.layerGroup();
+        const layerPolaRuang    = L.layerGroup();
+        const layerKesesuaian   = L.layerGroup();
+        const layerRekomendasi  = L.layerGroup();
+
+        const API_URL = "http://127.0.0.1:8000";
+
+        // ══════════════════════════════════════════════════════
+        // 3. Style Functions
+        // ══════════════════════════════════════════════════════
+        function styleKesesuaian(feature) {
+            const s = (feature.properties.suai_lahan || '').toUpperCase();
+            let fill = '#6b7280';
+            if (s.includes('S')) fill = '#10b981';
+            else if (s.includes('N')) fill = '#ef4444';
+            return { fillColor: fill, weight: 1, opacity: 0.9, color: 'rgba(255,255,255,0.2)', fillOpacity: 0.6 };
+        }
+
+        function styleCurahHujan(feature) {
+            const ch = feature.properties.CH || '';
+            const palette = {
+                '2300-2400': '#bfdbfe',
+                '2400-2500': '#93c5fd',
+                '2500-2600': '#60a5fa',
+                '2600-2700': '#3b82f6',
+                '2700-2800': '#1d4ed8',
+                '2800-2900': '#1e3a8a',
+            };
+            const fill = palette[ch] || '#1d4ed8';
+            return { fillColor: fill, weight: 1, opacity: 0.7, color: 'rgba(255,255,255,0.15)', fillOpacity: 0.55 };
+        }
+
+        function styleKemiringan(feature) {
+            const kl = feature.properties.KL || '';
+            const palette = {
+                '0-3%':   '#fef9c3',
+                '3-8%':   '#fde68a',
+                '8-15%':  '#f59e0b',
+                '15-25%': '#d97706',
+                '25-45%': '#b45309',
+                '>45%':   '#78350f',
+            };
+            const fill = palette[kl] || '#b45309';
+            return { fillColor: fill, weight: 0.5, opacity: 0.7, color: 'rgba(255,255,255,0.1)', fillOpacity: 0.55 };
+        }
+
+        function styleRekomendasi(feature) {
+            return {
+                fillColor: '#fde047', weight: 2, opacity: 1,
+                color: '#facc15', fillOpacity: 0.4,
+                dashArray: '4,3'
+            };
+        }
+
+        // ══════════════════════════════════════════════════════
+        // 4. Label helpers
+        // ══════════════════════════════════════════════════════
+        function detectLabelField(props, candidates) {
+            for (const c of candidates) {
+                if (props[c] !== undefined && props[c] !== null && String(props[c]).trim() !== '') return c;
+                const lower = c.toLowerCase();
+                for (const k of Object.keys(props)) {
+                    if (k.toLowerCase() === lower && props[k] !== null && String(props[k]).trim() !== '') return k;
+                }
+            }
+            for (const k of Object.keys(props)) {
+                const v = props[k];
+                if (v !== null && typeof v === 'string' && v.trim() !== '' && isNaN(v)) return k;
+            }
+            return null;
+        }
+
+        function updateLabelVisibility(layerGroup, minZoom) {
+            const z = map.getZoom();
+            layerGroup.eachLayer(l => {
+                if (l.getTooltip && l.getTooltip()) {
+                    z >= minZoom ? l.openTooltip() : l.closeTooltip();
+                }
+            });
+        }
+
+        // ══════════════════════════════════════════════════════
+        // 5. Generic loadLayer function
+        // ══════════════════════════════════════════════════════
+        async function loadLayer(namaLayer, layerGroup, styleFunc = null, labelFunc = null, labelMinZoomLevel = 11) {
+            try {
+                const response = await fetch(`${API_URL}/layer/${namaLayer}/geojson`);
+                const data = await response.json();
+                L.geoJSON(data, {
+                    style: styleFunc,
+                    onEachFeature(feature, layer) {
+                        const p = feature.properties || {};
+                        const title = namaLayer.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                        let html = `<div style="font-family:'Inter',sans-serif">
+                            <div style="font-weight:700;color:#e6edf3;font-size:13px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.08)">${title}</div>`;
+                        for (const key in p) {
+                            const val = p[key]; const k = key.replace(/_/g, ' ');
+                            let vd = val;
+                            if (key === 'suai_lahan' && val) {
+                                const up = val.toUpperCase();
+                                const col = up.includes('S') ? '#34d399' : up.includes('N') ? '#f87171' : '#9ca3af';
+                                vd = `<span style="color:${col};font-weight:600">${val}</span>`;
+                            }
+                            html += `<div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0">
+                                <span style="color:#6e7681">${k}</span>
+                                <span style="color:#c9d1d9;text-align:right">${vd ?? '—'}</span>
+                            </div>`;
+                        }
+                        html += '</div>';
+                        layer.bindPopup(html, { maxWidth: 260 });
+
+                        if (labelFunc) {
+                            const lbl = labelFunc(feature);
+                            if (lbl?.html) {
+                                layer.bindTooltip(`<div class="${lbl.cssClass || ''}">${lbl.html}</div>`,
+                                    { permanent: true, direction: 'center', className: 'map-label', opacity: 1 }
+                                );
+                                layer.on('add', () => { if (map.getZoom() < labelMinZoomLevel) layer.closeTooltip(); });
+                            }
+                        }
+                    }
+                }).addTo(layerGroup);
+
+                if (labelFunc) {
+                    map.on('zoomend', () => updateLabelVisibility(layerGroup, labelMinZoomLevel));
+                }
+            } catch (err) {
+                console.error(`Gagal memuat ${namaLayer}:`, err);
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // 6. Label Functions per layer
+        // ══════════════════════════════════════════════════════
+        function labelAdministrasi(f) {
+            const p = f.properties;
+            const kc = p['WADMKC'] || p['wadmkc'] || '';
+            const kd = p['WADMKD'] || p['wadmkd'] || '';
+            if (!kd && !kc) return null;
+            const text = kd ? kd : kc;
+            return { html: text, cssClass: 'lbl-admin' };
+        }
+
+        function labelKesesuaian(f) {
+            const val = f.properties['suai_lahan'] || f.properties['SUAI_LAHAN'] || '';
+            if (!val) return null;
+            const up = String(val).toUpperCase();
+            const cls = up.includes('S') ? 's-class' : up.includes('N') ? 'n-class' : 'un-class';
+            return { html: String(val), cssClass: `lbl-kesesuaian ${cls}` };
+        }
+
+        function labelPolaRuang(f) {
+            const val = f.properties['NAMOBJ'] || f.properties['namobj'] || '';
+            if (!val) return null;
+            let text = String(val).trim();
+            if (text.length > 22) text = text.slice(0, 20) + '…';
+            return { html: text, cssClass: 'lbl-pola' };
+        }
+
+        function labelCurahHujan(f) {
+            const val = f.properties['CH'] || '';
+            if (!val) return null;
+            return { html: val + ' mm', cssClass: 'lbl-curah' };
+        }
+
+        function labelKemiringan(f) {
+            const val = f.properties['KL'] || '';
+            if (!val || val === 'null') return null;
+            return { html: val, cssClass: 'lbl-lereng' };
+        }
+
+        function labelRekomendasi(f) {
+            return { html: 'Rekomendasi', cssClass: 'lbl-rekomendasi' };
+        }
+
+        // ══════════════════════════════════════════════════════
+        // 7. Load semua layer
+        // ══════════════════════════════════════════════════════
+        loadLayer("administrasi_wilayah", layerAdministrasi, null,               labelAdministrasi, 11);
+        loadLayer("curah_hujan",          layerCurahHujan,   styleCurahHujan,    labelCurahHujan,   10);
+        loadLayer("kemiringan_lereng",    layerKemiringan,   styleKemiringan,    labelKemiringan,   12);
+        loadLayer("pola_ruang",           layerPolaRuang,    null,               labelPolaRuang,    12);
+        loadLayer("kesesuaian_lahan",     layerKesesuaian,   styleKesesuaian,    labelKesesuaian,   12);
+
+        // Layer control
+        const overlayMaps = {
+            "Batas Administrasi":       layerAdministrasi,
+            "Curah Hujan":              layerCurahHujan,
+            "Kemiringan Lereng":        layerKemiringan,
+            "Pola Ruang RTRW":          layerPolaRuang,
+            "Kesesuaian Lahan Ubi Jalar": layerKesesuaian,
+            "Rekomendasi Lahan":        layerRekomendasi,
+        };
+        L.control.layers(baseMaps, overlayMaps, { collapsed: false, position: 'topleft' }).addTo(map);
+        layerKesesuaian.addTo(map);
+
+        // ══════════════════════════════════════════════════════
+        // 8. Koordinat live
+        // ══════════════════════════════════════════════════════
+        map.on('mousemove', e => {
+            document.getElementById('coord-display').textContent =
+                `Lat ${e.latlng.lat.toFixed(5)}  Lon ${e.latlng.lng.toFixed(5)}`;
+        });
+        map.on('mouseout', () => { document.getElementById('coord-display').textContent = '—'; });
+
+        // ══════════════════════════════════════════════════════
+        // 9. Helpers UI
+        // ══════════════════════════════════════════════════════
+        const ICON_INFO  = `<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+        const ICON_CHART = `<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`;
+        const ICON_STAR  = `<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+
+        function labelHtml(icon, text) {
+            return `<div class="flex items-center gap-2 text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-3">${icon}${text}</div>`;
+        }
+        function spinnerHtml(msg) {
+            return `<div class="flex items-center justify-center gap-2 py-5 text-gray-500 text-[12px]">
+                <svg class="w-4 h-4 animate-spin-fast text-emerald-400" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>${msg}</div>`;
+        }
+        function setPanel(html) { document.getElementById('info-panel').innerHTML = html; }
+
+        // ══════════════════════════════════════════════════════
+        // 10. Klik Peta — Info lengkap 5 layer
+        // ══════════════════════════════════════════════════════
+        map.on('click', async function(e) {
+            const { lat, lng: lon } = e.latlng;
+            setPanel(labelHtml(ICON_INFO, 'Informasi Lahan') + spinnerHtml('Mengambil data semua layer…'));
+
+            try {
+                const res  = await fetch(`${API_URL}/suitability?lat=${lat}&lon=${lon}`);
+                const resp = await res.json();
+                const d    = resp.data || {};
+
+                const k   = d.kesesuaian_lahan;
+                const ch  = d.curah_hujan;
+                const km  = d.kemiringan_lereng;
+                const pr  = d.pola_ruang;
+                const adm = d.administrasi;
+
+                const suai = k?.suai_lahan || '';
+                const up   = suai.toUpperCase();
+                const isS  = up.includes('S'), isN = up.includes('N');
+                const badgeCls = isS ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                               : isN ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                               : 'bg-gray-500/10 border-gray-500/20 text-gray-400';
+                const badgeIcon = isS
+                    ? `<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+                    : isN
+                        ? `<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+                        : `<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+
+                function row(label, value, valueClass = 'text-gray-300') {
+                    return `<div class="flex items-center justify-between text-[11.5px] py-1 border-b border-white/[0.04]">
+                        <span class="text-gray-500">${label}</span>
+                        <span class="${valueClass} font-medium text-right max-w-[55%]">${value || '—'}</span>
+                    </div>`;
+                }
+
+                let body = `<div class="flex flex-col gap-2 animate-fade-up">
+                    <div class="flex gap-2 flex-wrap">
+                        <span class="px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10.5px] font-mono">Lat ${lat.toFixed(4)}</span>
+                        <span class="px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10.5px] font-mono">Lon ${lon.toFixed(4)}</span>
+                    </div>`;
+
+                // Kesesuaian badge
+                if (k) {
+                    body += `<div class="flex items-center gap-2 px-3 py-2.5 rounded-lg border ${badgeCls} font-semibold text-[13px]">
+                        ${badgeIcon} Kesesuaian: ${suai || '—'}
+                    </div>`;
+                }
+
+                // Data rows
+                body += `<div class="flex flex-col px-1">`;
+                if (adm) {
+                    body += row('Kecamatan', adm.kecamatan, 'text-blue-300');
+                    body += row('Desa', adm.desa, 'text-blue-300');
+                }
+                if (ch)  body += row('Curah Hujan', ch.curah_hujan + ' mm/thn', 'text-sky-300');
+                if (km)  body += row('Kemiringan Lereng', km.kemiringan_lereng, 'text-amber-300');
+                if (pr)  body += row('Pola Ruang', pr.pola_ruang, 'text-violet-300');
+                if (k?.pembatas) body += row('Faktor Pembatas', k.pembatas, 'text-orange-300');
+                body += `</div></div>`;
+
+                if (!k && !ch && !km && !pr && !adm) {
+                    body = `<div class="flex flex-col items-center gap-2 py-4 text-center animate-fade-up">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <p class="text-[12px] text-gray-500">Tidak ada data di titik ini.</p>
+                    </div>`;
+                }
+
+                setPanel(labelHtml(ICON_INFO, 'Informasi Lahan') + body);
+            } catch (err) {
+                console.error(err);
+                setPanel(labelHtml(ICON_INFO, 'Informasi Lahan') + `
+                    <div class="flex flex-col items-center gap-2 py-4 text-center">
+                        <p class="text-[12px] text-red-400">Gagal terhubung ke server.</p>
+                    </div>`);
+            }
+        });
+
+        // ══════════════════════════════════════════════════════
+        // 11. Draw Polygon → Analisis Luas
+        // ══════════════════════════════════════════════════════
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        const drawControl = new L.Control.Draw({
+            edit: { featureGroup: drawnItems },
+            draw: {
+                marker: false, polyline: false, circle: false, circlemarker: false,
+                rectangle: { shapeOptions: { color: '#10b981', fillOpacity: 0.12, weight: 2 } },
+                polygon:   { shapeOptions: { color: '#60a5fa', fillOpacity: 0.12, weight: 2 } }
+            }
+        });
+        map.addControl(drawControl);
+
+        map.on(L.Draw.Event.CREATED, async function(event) {
+            drawnItems.addLayer(event.layer);
+            const geojsonData = event.layer.toGeoJSON().geometry;
+            setPanel(labelHtml(ICON_CHART, 'Hasil Analisis Area') + spinnerHtml('Menghitung luas di PostGIS…'));
+
+            try {
+                const res    = await fetch(`${API_URL}/analyze`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ geometry: geojsonData })
+                });
+                const result = await res.json();
+
+                let body = '<div class="flex flex-col gap-2 animate-fade-up">';
+                if (result.hasil_analisis?.length > 0) {
+                    let total = 0;
+                    result.hasil_analisis.forEach(row => {
+                        const ha    = (row.luas_meter_persegi / 10000).toFixed(2);
+                        total      += parseFloat(ha);
+                        const suai  = row.suai_lahan ?? '';
+                        const isS   = suai.toUpperCase().includes('S');
+                        const isN   = suai.toUpperCase().includes('N');
+                        const cls   = isS ? 'bg-emerald-500/[0.07] border-emerald-500/20'
+                                    : isN ? 'bg-red-500/[0.07] border-red-500/20'
+                                    : 'bg-white/[0.03] border-white/[0.06]';
+                        const kCls  = isS ? 'text-emerald-300' : isN ? 'text-red-300' : 'text-gray-400';
+                        const chk   = isS
+                            ? `<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+                            : isN
+                                ? `<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+                                : `<span class="w-3 h-3"></span>`;
+                        body += `<div class="flex items-center justify-between px-3 py-2 rounded-lg border ${cls}">
+                            <div class="flex items-center gap-2">${chk}<span class="${kCls} font-semibold text-[12.5px]">${suai || '—'}</span></div>
+                            <span class="text-gray-300 font-mono text-[12.5px]">${ha} Ha</span>
+                        </div>`;
+                    });
+                    body += `<div class="flex items-center justify-between px-1 pt-1 border-t border-white/[0.06] mt-1">
+                        <span class="text-[11px] text-gray-500">Total Area</span>
+                        <span class="text-gray-200 font-mono font-semibold text-[13px]">${total.toFixed(2)} Ha</span>
+                    </div>`;
+                } else {
+                    body += `<div class="py-4 text-center text-[12px] text-gray-500">Area tidak mengenai peta kesesuaian lahan.</div>`;
+                }
+                body += '</div>';
+                setPanel(labelHtml(ICON_CHART, 'Hasil Analisis Area') + body);
+            } catch (err) {
+                console.error(err);
+                setPanel(labelHtml(ICON_CHART, 'Hasil Analisis Area') + `<p class="text-[12px] text-red-400 text-center py-4">Gagal analisis area.</p>`);
+            }
+        });
+
+        // ══════════════════════════════════════════════════════
+        // 12. Load Rekomendasi Lahan (Analisis Spasial Wajib)
+        // ══════════════════════════════════════════════════════
+        async function loadRecommendation() {
+            const btn = document.getElementById('btn-recommend');
+            const chip = document.getElementById('recommend-chip');
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="w-4 h-4 animate-spin-fast" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Memproses PostGIS…`;
+
+            try {
+                const res  = await fetch(`${API_URL}/recommend`);
+                const data = await res.json();
+
+                layerRekomendasi.clearLayers();
+
+                if (data.features && data.features.length > 0) {
+                    L.geoJSON(data, {
+                        style: styleRekomendasi,
+                        onEachFeature(feature, layer) {
+                            const p = feature.properties || {};
+                            let html = `<div style="font-family:'Inter',sans-serif">
+                                <div style="font-weight:700;color:#fde047;font-size:13px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(253,224,71,0.2)">
+                                    Rekomendasi Lahan Ubi Jalar
+                                </div>
+                                <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0"><span style="color:#6e7681">Kesesuaian</span><span style="color:#34d399;font-weight:600">${p.suai_lahan || '—'}</span></div>
+                                <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0"><span style="color:#6e7681">Pola Ruang</span><span style="color:#c9d1d9">${p.pola_ruang || '—'}</span></div>
+                                <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0"><span style="color:#6e7681">Curah Hujan</span><span style="color:#7dd3fc">${p.curah_hujan || '—'} mm</span></div>
+                                <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0"><span style="color:#6e7681">Kemiringan</span><span style="color:#fde68a">${p.kemiringan || '—'}</span></div>
+                                <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0"><span style="color:#6e7681">Luas</span><span style="color:#c9d1d9;font-weight:600">${p.luas_ha || '—'} Ha</span></div>
+                            </div>`;
+                            layer.bindPopup(html, { maxWidth: 280 });
+                            const lbl = labelRekomendasi(feature);
+                            layer.bindTooltip(`<div class="${lbl.cssClass}">${lbl.html}</div>`,
+                                { permanent: true, direction: 'center', className: 'map-label', opacity: 1 }
+                            );
+                        }
+                    }).addTo(layerRekomendasi);
+
+                    layerRekomendasi.addTo(map);
+                    chip.style.display = 'flex';
+
+                    setPanel(labelHtml(ICON_STAR, 'Rekomendasi Lahan') +
+                        `<div class="flex flex-col gap-2 animate-fade-up">
+                            <div class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-yellow-300 text-[13px] font-semibold">
+                                ${ICON_STAR} ${data.features.length} area rekomendasi ditemukan
+                            </div>
+                            <p class="text-[11px] text-gray-500 leading-relaxed px-1">
+                                Area berwarna <span class="text-yellow-300 font-medium">kuning</span> pada peta adalah lokasi terbaik untuk perluasan lahan Ubi Jalar berdasarkan: kesesuaian lahan S1/S2/S3, curah hujan sedang-tinggi, kemiringan ≤ 15%, dan pola ruang non-lindung/permukiman.
+                            </p>
+                        </div>`
+                    );
+                } else {
+                    setPanel(labelHtml(ICON_STAR, 'Rekomendasi Lahan') +
+                        `<p class="text-[12px] text-gray-500 text-center py-4">Tidak ada area rekomendasi ditemukan.</p>`);
+                }
+            } catch (err) {
+                console.error(err);
+                setPanel(labelHtml(ICON_STAR, 'Rekomendasi Lahan') +
+                    `<p class="text-[12px] text-red-400 text-center py-4">Gagal memuat rekomendasi: ${err.message}</p>`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 group-hover:scale-110 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Tampilkan Rekomendasi Lahan`;
+            }
+        }
+
+        // ══════════════════════════════════════════════════════
+        // 13. Clear map
+        // ══════════════════════════════════════════════════════
+        function clearMap() {
+            drawnItems.clearLayers();
+            layerRekomendasi.clearLayers();
+            document.getElementById('recommend-chip').style.display = 'none';
+            setPanel(`
+                <div class="flex items-center gap-2 text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-3">
+                    ${ICON_INFO} Informasi Lahan
+                </div>
+                <div class="flex flex-col items-center justify-center py-4 gap-3 text-center animate-fade-up">
+                    <div class="w-12 h-12 rounded-2xl bg-[#1c2333] border border-white/[0.06] flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-[12px] font-medium text-gray-400 mb-1">Gambar berhasil dihapus</p>
+                        <p class="text-[11px] text-gray-600 leading-relaxed">Klik titik atau gambar area baru untuk analisis.</p>
+                    </div>
+                </div>`);
+        }
+    </script>
+</body>
+</html>
